@@ -1,0 +1,173 @@
+Test branch for buster with python3 set as default
+
+#--------------------------------------------------------------
+0)    Do not use on debian stretch (many problems)
+
+1)    Branches containing this file (PY3_README) are test
+      branches for using LinuxCNC with python3 as the 
+      default python (e.g., debian buster).
+
+      The changes include mechanical updates to *.py files
+      and coding updates for python extensions in *.*c files.
+
+1.1)  The linuxcnc script will exit if python3 is 
+      not setup as default python interpreter.
+
+1.2)  If system has *both* python2 and python3 installed, configure
+      update-alternatives and then select python3.x. (You
+      can always restore python2 as default).
+
+      Example setup commands (as root):
+      # update-alternatives --install /usr/bin/python python /usr/bin/python2.7 1
+      # update-alternatives --install /usr/bin/python python /usr/bin/python3.7 2
+      # update-alternatives --config python
+      > There are 2 choices for the alternative python (providing /usr/bin/python).
+      >
+      >  Selection    Path                Priority   Status
+      >------------------------------------------------------------
+      >* 0            /usr/bin/python3.7   2         auto mode
+      >  1            /usr/bin/python2.7   1         manual mode
+      >  2            /usr/bin/python3.7   2         manual mode
+      >Press <enter> to keep the current choice[*], or type selection number: 
+      >
+      >Similar steps for python-config, example:
+      ># update-alternatives --install /usr/bin/python-config python-config /usr/bin/python2.7-config 2
+      ># update-alternatives --install /usr/bin/python-config python-config /usr/bin/python3.7-config 1
+      ># update-alternatives --config python-config
+      ># update-alternatives --config python-config
+      >There are 2 choices for the alternative python-config (providing /usr/bin/python-config).
+      >
+      >  Selection    Path                       Priority   Status
+      >------------------------------------------------------------
+      >* 0            /usr/bin/python3.7-config   2         auto mode
+      >  1            /usr/bin/python2.7-config   1         manual mode
+      >  2            /usr/bin/python3.7-config   2         manual mode
+      >
+      >Press <enter> to keep the current choice[*], or type selection number: 
+
+      ($ man update-alternatives for more info)
+
+1.3)  Example python3 specific packages:
+      $ dpkg -l '*python3*'|grep dev|grep ii
+      ii  libpython3-dev 3.7.3-1 amd64 header files and ...
+      ii  python3-dev    3.7.3-1 amd64 header files and ...
+      ...
+
+1.4   Example libboost configuration:
+      $ dpkg -l 'libboost*'|grep python|grep ii
+      ii  libboost-python-dev     1.67.0.1  amd64 Boost.Python Library...
+      ii  libboost-python1.67-dev 1.67.0-13 amd64 Boost.Python Library...
+      ii  libboost-python1.67.0   1.67.0-13 amd64 Boost.Python Library
+
+
+1.5)  Configure commands for libboost (python3.7):
+      $ cd src
+      $ ./autogen.sh
+      $ ./configure --with-realtime=uspace
+      (uses boost_python3-py37)
+      (alt: use --with-boost-python=boost_python3-pyNN)
+
+1.6)  Python3 packages required (partial list)
+      python3,python3-tk,python3-gi
+
+1.7)  python *.py files converted with /usr/bin/2to3-2.7 with
+      some minor fixups.  The program is in the package
+      $ dpkg -S /usr/bin/2to3-2.7 --> python2.7
+      (on stretch the app was /usr/bin/2to3 in the python pkg)
+
+#--------------------------------------------------------------
+2)    Operating System(s) undergoing test
+2.1)  Debian GNU/Linux 10 (buster)
+      $ lsb_release -r -->  Release:	10
+      $ uname -r       --> 4.19.0-6-rt-amd64
+
+#--------------------------------------------------------------
+3)     Major current KNOWN problems
+
+3.1)   non-boost python modules:
+3.1.1) _hal  -- working (shm not updated)
+3.1.1) gcode -- working (lightly tested)
+
+3.2)   boost python modules:
+3.2.1) BOOST_PYTHON MODULE(rotarydeltkins)    working
+3.2.2) BOOST_PYTHON MODULE(lineardeltkins)    working
+3.2.3) BOOST_PYTHON MODULE(interpreter)   not working
+3.2.4) BOOST_PYTHON MODULE(emccanon)      not working
+3.2.5) BOOST_PYTHON MODULE(emctask)       not working
+     
+3.3) Simple test for interpreter python module problems
+     is to run rs274 (backtrace now provided (requires 
+     install of the gdb package)):
+     $ rs274
+     bin/rs274 (src/emc/sai/driver.cc)
+         segfaults on start  -- use backtrace
+         attemping to import "interpreter" module
+         should be easier to debug than all of LinuxCNC
+
+3.4) axisgui/gremlin pango/cairo/pango cairo problems
+     (see workaround below)
+
+3.5) gladevcp (gtk,pygtk,glade: python3 & gtk)
+#--------------------------------------------------------------
+4)   runtests -- many problems, current:
+     Runtest: 229 tests run, 109 successful, 120 failed
+     Note: runtests script is currently disabled
+
+#--------------------------------------------------------------
+5)   Some code updated to catch errors, print a problem
+     message and allow continued execution
+
+#--------------------------------------------------------------
+6)   Workarounds
+
+6.1) pango/cairo/pangocairo fail numerous ways on buster-python3
+     so prior method for creating DRO text in preview fails.
+     Workaround in glnav.py uses a fixed bitmap for text
+     characters provided by hack: lib/python/font_bitmps.py
+     (uppercase only to limit loadtime & storage)
+     
+6.2) interp_python.cc fake msg for broken handle_pyerror()
+
+6.3) halmodule.cc shm stuff commented out using
+      \#undef PY3_SHM_FIXES
+      \#define PY3_SHM_FIXES to work on this
+
+#--------------------------------------------------------------
+7)   Other notes
+7.1) because work on qt items is ongoing,
+     most of the qt-related *.py python files are *not*
+     updated in this branch as it makes for merge/rebase
+     problems with the master branch since it keeps changing.
+
+     Future: running 2to3 on qt related py files should
+     not be a problem.
+
+     Existing changes for qt  python files by 2to3:
+
+     src/emc/usr_intf/gremlin/qt5_graphics.py
+     -import thread
+     +import _thread
+
+     src/emc/usr_intf/qtvcp/qtvcp.py
+     - gettext.install(PATH.DOMAIN, localedir=PATH.LOCALEDIR, unicode=True)
+     + gettext.install(PATH.DOMAIN, localedir=PATH.LOCALEDIR, str=True)
+
+7.2) removed unused file src/emc/sai/builtin_modules.cc
+
+7.3) some .py files with tab/indent damage have been fixed with
+     reindent.py in package python3.7-examples:
+     /usr/share/doc/python3.7/examples/scripts/reindent.py
+
+7.4) wip: pango,cairo,pangocairo for python3:
+     import cairo
+     import gi
+     gi.require_version('Pango', '1.0')
+     gi.require_version('PangoCairo', '1.0')
+     from gi.repository import Pango as pango
+     from gi.repository import Pango as pango
+
+     Ref: https://gist.github.com/meased/af3c87e8c1f8baa2952e0bf9541da452
+     
+     better, but now error in glnav.py is:
+      'gi.repository.PangoCairo' object has no attribute 'CairoContext' 
+#--------------------------------------------------------------

@@ -58,5 +58,5 @@ class Player:
             # Error ocurred, print and stop
             self.player.set_state(gst.STATE_NULL)
             err, debug = message.parse_error()
-            print ("Error: %s" % err, debug)
+            print(("Error: %s" % err, debug))
             self.loop.quit()

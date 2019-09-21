@@ -108,6 +108,7 @@ using namespace interp_param_global;
 namespace bp = boost::python;
 
 extern char * _rs274ngc_errors[];
+extern int _task; //for reporting
 
 const char *Interp::interp_status(int status) {
     static char statustext[50];
@@ -120,7 +121,6 @@ const char *Interp::interp_status(int status) {
     return statustext;
 }
 
-extern struct _inittab builtin_modules[];
 int trace;
 static char savedError[LINELEN+1];
 
@@ -130,18 +130,16 @@ Interp::Interp()
 {
     _setup.init_once = 1;  
   init_named_parameters();  // need this before Python init.
+fprintf(stderr,"--- Interp:Interp pid=%d _task=%d\n",getpid(),_task);
  
-  if (!PythonPlugin::instantiate(builtin_modules)) {  // factory
-    Error("Interp ctor: cant instantiate Python plugin");
-    return;
-  }
-
 // KLUDGE just to get unit tests to stop complaining about python modules we won't use anyway
 #ifndef UNIT_TEST
   try {
+//PY3 below fails for _task=0, succeeds for _task=1
+fprintf(stderr,"TRY: rs274ngc_pre.cc import(\"interpreter\") _task=%d\n",_task);
     // this import will register the C++->Python converter for Interp
     bp::object interp_module = bp::import("interpreter");
-	
+fprintf(stderr,"OK:  rs274ngc_pre.cc import(\"interpreter\") _task=%d\n",_task);
     // use a boost::cref to avoid per-call instantiation of the
     // Interp Python wrapper (used for the 'self' parameter in handlers)
     // since interp.init() may be called repeatedly this would create a new
@@ -166,7 +164,11 @@ Interp::Interp()
       exception_msg = "unknown exception";
     bp::handle_exception();
     PyErr_Clear();
-    Error("PYTHON: exception during 'this' export:\n%s\n",exception_msg.c_str());
+    Error("PYTHON: exception during 'this' (\"interpreter\") import:\n"
+          "        %s\n"
+          "        _task=%d (%s)\n",
+          exception_msg.c_str(),
+          _task,_task?"task":"gcodemodule");
   }
 #endif
 }
@@ -995,7 +997,14 @@ int Interp::init()
           if (NULL != (inistring = inifile.Find("TOPLEVEL", "PYTHON"))) {
 	      int status = python_plugin->configure(iniFileName,"PYTHON");
 	      if (status != PLUGIN_OK) {
-		  Error("Python plugin configure() failed, status = %d", status);
+                  const char* msg = "Other";
+                  switch (status) { // status can be negative too
+                       PLUGIN_NO_CALLABLE:     msg="NO_CALLABLE";break;
+                       PLUGIN_EXCEPTION:       msg="EXCEPTION"  ;break;
+                  }
+                  if (status==PLUGIN_INIT_EXCEPTION) { msg="INIT_EXCEPTION";}
+		  Error("\nPPPython plugin configure() failed, status = %d %s",
+                  status,msg);
 	      }
 	  }
  

@@ -1,3 +1,9 @@
+/* PY3 Note: ignoring because of long-existing errors in
+   emcTaskOnce() below:
+     bp::object task_namespace =  python_plugin->main_namespace[TASK_MODULE] ...
+   always fails because TASK_MODULE is a string
+*/
+
 // this is a slide-in replacement for the functions in iotaskintf.cc
 // iotaskintf functions are made into class methods and are the default
 // methods of TaskClass which may be overridden by Python methods
@@ -304,16 +310,19 @@ static const char *instance_name = "task_instance";
 
 int emcTaskOnce(const char *filename)
 {
+/* PY3fix removed (segfault):
     bp::object retval;
     bp::tuple arg;
     bp::dict kwarg;
-
+*/
     // initialize the Python plugin singleton
     // Interp is already instantiated but not yet fully configured
     // both Task and Interp use it - first to call configure() instantiates the Python part
     // NB: the interpreter.this global will appear only after Interp.init()
 
+    extern int _task;
     extern struct _inittab builtin_modules[];
+
     if (!PythonPlugin::instantiate(builtin_modules)) {
 	rcs_print("emcTaskOnce: cant instantiate Python plugin\n");
 	goto no_pytask;
@@ -325,9 +334,11 @@ int emcTaskOnce(const char *filename)
     } else {
 	goto no_pytask;
     }
+
     if (PYUSABLE) {
 	// extract the instance of Python Task()
-	try {
+	try { //PY3wip
+fprintf(stderr,"\nPROBLEM taskclass.cc _task=%d TASK_VAR is string <%s>\n",_task,TASK_VAR);
 	    bp::object task_namespace =  python_plugin->main_namespace[TASK_MODULE].attr("__dict__");;
 	    bp::object result = task_namespace[TASK_VAR];
 	    bp::extract<Task *> typetest(result);
@@ -339,9 +350,10 @@ int emcTaskOnce(const char *filename)
 	    }
 	} catch( bp::error_already_set ) {
 	    std::string msg = handle_pyerror();
-	    if (emc_debug & EMC_DEBUG_PYTHON_TASK) {
+//PY3wip force print
+	    if (1 || emc_debug & EMC_DEBUG_PYTHON_TASK) {
 		// this really just means the task python backend wasnt configured.
-		rcs_print("emcTaskOnce: extract(%s): %s\n", instance_name, msg.c_str());
+		rcs_print("emcTaskOnce: extract(%s):\n%s\n\n", instance_name, msg.c_str());
 	    }
 	    PyErr_Clear();
 	}
@@ -400,12 +412,12 @@ int return_int(const char *funcname, PyObject *retval)
 	return -1;
     }
     if ((retval != Py_None) &&
-	(PyInt_Check(retval))) {
-	return PyInt_AS_LONG(retval);
+	(PyLong_Check(retval))) {
+	return PyLong_AS_LONG(retval);
     } else {
 	emcOperatorError(0, "return_int(%s): expected int return value, got '%s' (%s)",
 			 funcname,
-			 PyString_AsString(retval),
+			 PyBytes_AsString(retval),
 			 retval->ob_type->tp_name);
 	Py_XDECREF(retval);
 	return -1;
@@ -436,17 +448,14 @@ int emcPluginCall(EMC_EXEC_PLUGIN_CALL *call_msg)
 //     return status;
 // }
 
-extern "C" void initemctask();
-extern "C" void initinterpreter();
-extern "C" void initemccanon();
-struct _inittab builtin_modules[] = {
-    { (char *) "interpreter", initinterpreter },
-    { (char *) "emccanon", initemccanon },
-    { (char *) "emctask", initemctask },
-    // any others...
+// see also gcodemodule.cc
+extern "C" PyObject* PyInit_interpreter(void);     //PY3fix
+extern "C" PyObject* PyInit_emccanon(void);        //PY3fix
+struct _inittab builtin_modules[] = {              //PY3fix
+    { (char *) "interpreter", PyInit_interpreter },
+    { (char *) "emccanon", PyInit_emccanon },
     { NULL, NULL }
 };
-
 
 
 Task::Task() : use_iocontrol(0), random_toolchanger(0) {
